@@ -1,0 +1,210 @@
+
+_G.love = require("love")
+
+local Player = {}
+
+function Player:load()
+	Player.fw = 614
+	Player.fh = 564
+	Player.scaleX = 0.15
+	Player.scaleY = 0.15
+	Player.state = "dead"
+	Player.direction = "1"
+	Player.lockstate = false
+	Player.img = {
+		-- Frame : 614x564
+		idle = love.graphics.newImage("assets/idle.png"),
+		walk = love.graphics.newImage("assets/walk.png"),
+		dead = love.graphics.newImage("assets/dead.png"),
+		jump = love.graphics.newImage("assets/jump.png"),
+		run = love.graphics.newImage("assets/run.png"),
+	}
+	Player.grid = anim8.newGrid(Player.fw, Player.fh, Player.img.idle:getWidth(), Player.img.idle:getHeight())
+	Player.animations = {
+		idle = anim8.newAnimation(Player.grid("1-15", 1), 0.1),
+		walk = anim8.newAnimation(Player.grid("1-15", 1), 0.075),
+		run = anim8.newAnimation(Player.grid("1-15", 1), 0.045),
+		jump = anim8.newAnimation(Player.grid("1-15", 1), 0.045),
+		dead = anim8.newAnimation(Player.grid("1-15", 1), 0.045),
+	}
+end
+function Player:draw()
+	Player.animations[Player.state]:draw(Player.img[Player.state], Player.x, Player.y, 0, Player.scaleX, Player.scaleY)
+end
+function Player:update(dt)
+	Player.animations[Player.state]:update(dt)
+	if love.keyboard.isDown("a") then
+		Player.state = "walk"
+	elseif love.keyboard.isDown("r") then
+		Player.state = "run"
+	elseif love.keyboard.isDown("j") then
+		Player.state = "jump"
+	elseif love.keyboard.isDown("d") then
+		Player.state = "dead"
+	elseif love.keyboard.isDown("i") then
+		Player.state = "idle"
+	end
+end
+function Player:destroy() end
+return Player
+
+##########################################
+############### Level 1 ##################
+##########################################
+
+local Level1 = {}
+local love = require("love")
+local Player = require("src.Player")
+local Ball = require("src.objects.Ball")
+local MapLoader = require("lib.Maploader")
+local anim8 = require("lib.anim8.anim8")
+-- local gamera = require("lib.gamera.gamera")
+local camera = require("lib.hump.camera")
+
+function Level1:init()
+	self.zoom = math.min(sw / gw, sh / gh)
+	self.timer1 = Timer.new()
+	self.title = "Level 1"
+	self.prompt = "Press SPACE or ENTER to Start"
+
+	self.world = wf.newWorld(0, 350, true)
+	self.world:setQueryDebugDrawing(true)
+	self.world:addCollisionClass("Ground")
+	self.world:addCollisionClass("Player")
+	self.world:addCollisionClass("Ball")
+
+	-- Ground becomes static windfield colliders; Fall1/End come back as
+	-- plain rects; Ball1..Ball4 come back as spawn points.
+	self.map = MapLoader.load("maps/level1.json", self.world)
+
+	-- 1. Create the grid first so it can be safely referenced
+
+	self.pstate = "idle"
+	-- 2. Pass grid and animations safely into the Player constructor
+	self.player = Player({
+		x = 100,
+		y = 100,
+		w = 122,
+		h = 109,
+		state = "idle",
+		world = self.world,
+	})
+	if self.player.collider and self.player.collider.setCollisionClass then
+		self.player.collider:setCollisionClass("Player")
+	end
+
+	-- Spawn one Ball per Ball1..Ball4 object layer instead of hardcoding
+	-- self.ball / self.ball2 by hand.
+	self.balls = {}
+	for _, spawn in ipairs(self.map.balls) do
+		local ball = Ball(self.world, spawn.x, spawn.y)
+		if ball.collider and ball.collider.setCollisionClass then
+			ball.collider:setCollisionClass("Ball")
+		end
+		table.insert(self.balls, ball)
+	end
+	-- self.cam = gamera.new(0, 0, 640, 360)
+	self.camera = camera.new(0, 0)
+	self.camera:zoomTo(self.zoom)
+	-- self.camera:lookAt(0, 30)
+end
+
+function Level1:enter(previous)
+	-- Called every time you switch TO this state
+end
+
+-- Fall1/End aren't physics bodies, so they're checked with a plain AABB
+-- overlap test against the player each frame.
+local function overlaps(px, py, pw, ph, zone)
+	return px < zone.x + zone.width and px + pw > zone.x and py < zone.y + zone.height and py + ph > zone.y
+end
+
+function Level1:update(dt)
+	self.world:update(dt)
+	self.timer1:update(dt)
+	-- self.cam:setPosition(500, 400)
+	-- self.camera:lookAt(self.player.x + 640, self.player.y + 340)
+	self.camera:lookAt(self.player.x, gh / 2)
+	-- Camera Boundaries
+	if self.player.x < (gw / 2) then
+		self.camera:lookAt(gw / 2, gh / 2)
+	elseif self.player.x > (gw / 2) then
+		self.camera:lookAt(self.player.x, gh / 2)
+	end
+
+	for _, ball in ipairs(self.balls) do
+		ball:update(dt)
+	end
+
+	self.player:update(dt)
+	if love.keyboard.isDown("d") then
+		self.player:walk(50, 1)
+	elseif love.keyboard.isDown("a") then
+		self.player:walk(50, -1)
+	elseif love.keyboard.isDown("space") then
+		self.player:jump(-550)
+	elseif love.keyboard.isDown("lshift") then
+		self.player:run(100)
+	end
+
+	local px, py = self.player.x, self.player.y
+	local pw, ph = self.player.w, self.player.h
+
+	for _, zone in ipairs(self.map.fallZones) do
+		if overlaps(px, py, pw, ph, zone) then
+			self:onFall()
+			break
+		end
+	end
+
+	for _, zone in ipairs(self.map.endZones) do
+		if overlaps(px, py, pw, ph, zone) then
+			self:onLevelComplete()
+			break
+		end
+	end
+end
+
+-- Player's bounding box entered a Fall1 gap. Wire up a respawn/death here.
+function Level1:onFall() end
+
+-- Player's bounding box reached the End zone. Wire up a level transition here.
+function Level1:onLevelComplete() end
+
+function Level1:draw()
+	-- push:start()
+	self.camera:attach()
+	love.graphics.clear(0.1, 0.1, 0.15)
+
+	-- self.camera:attach()
+	-- push:start()
+	self.world:draw()
+	self.player:draw()
+	for _, ball in ipairs(self.balls) do
+		ball:draw()
+	end
+	love.graphics.setColor(1, 1, 1)
+	Font.printf(self.title, 0, 50, gw, "center", 24)
+	if self.player.onGround then
+		Font.printf("On Ground", 0, 20, gw, "center", 24)
+	else
+		Font.printf("Not in Ground", 0, 20, gw, "center", 24)
+	end
+
+	-- push:finish()
+
+	self.camera:detach()
+	-- push:finish()
+	--
+	FPS(TITLE_MD, TITLE_MD)
+end
+--
+-- function Level1:draw()
+-- 	self.cam:draw(self.drawByCamera)
+-- 	FPS(TITLE_MD, TITLE_MD)
+-- end
+
+function Level1:keypressed(key) end
+
+return Level1
+

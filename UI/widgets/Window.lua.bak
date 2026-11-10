@@ -1,0 +1,52 @@
+local Class = require(UI_PATH .. ".libs.class")
+local Base = require(UI_PATH .. ".widgets.base")
+
+local Window = Class({
+	__includes = Base,
+
+	init = function(self, props)
+		props = props or {}
+		-- 1. Initialize the Base widget class properties if Base has an init method
+		if Base.init then
+			Base.init(self, props)
+		end
+		if self.debug then
+			print("Window Added. ID :" .. self.id)
+		end
+	end,
+
+	update = function(self, dt)
+		if not self.enabled then
+			return
+		end
+		if self.bg then
+			love.graphics.setColor(self.bg[1], self.bg[2], self.bg[3], self.alpha)
+		end
+		if self.borderWidth then
+			love.graphics.setLineWidth(self.borderWidth)
+		end
+		love.graphics.rectangle(self.type, self.x, self.y, self.w, self.h)
+
+		love.graphics.setColor(1, 1, 1, 1)
+		-- Update components/children inside the button (like text or icons)
+		for _, child in ipairs(self.children) do
+			if child and child.update then
+				child:update(dt)
+			end
+		end
+	end,
+
+	draw = function(self)
+		if not self.visible then
+			return
+		end
+		-- 3. Render any sub-children/text elements attached to this layout frame
+		for _, child in ipairs(self.children) do
+			if child and child.draw then
+				child:draw()
+			end
+		end
+	end,
+})
+
+return Window

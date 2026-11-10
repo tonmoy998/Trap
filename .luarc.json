@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "workspace": {
+    "library": ["C:/Users/Tonmoy Mojumder/AppData/Roaming/Lua/love-api"],
+    "checkThirdParty": false
+  },
+  "diagnostics": { "globals": ["vim", "love"] },
+  "telemetry": { "enable": false },
+  "runtime": { "version": "LuaJIT" }
+}
